@@ -1,56 +1,76 @@
 # **Finding Lane Lines on the Road** 
-[![Udacity - Self-Driving Car NanoDegree](https://s3.amazonaws.com/udacity-sdc/github/shield-carnd.svg)](http://www.udacity.com/drive)
 
-<img src="examples/laneLines_thirdPass.jpg" width="480" alt="Combined Image" />
+## 1. My pipeline
 
-Overview
----
+The pipeline is `find_lane_lines` function.
 
-When we drive, we use our eyes to decide where to go.  The lines on the road that show us where the lanes are act as our constant reference for where to steer the vehicle.  Naturally, one of the first things we would like to do in developing a self-driving car is to automatically detect lane lines using an algorithm.
+### Step 1: Convert image to grayscale
 
-In this project you will detect lane lines in images using Python and OpenCV.  OpenCV means "Open-Source Computer Vision", which is a package that has many useful tools for analyzing images.  
+- Using `cv2.cvtColor()` function.
 
-To complete the project, two files will be submitted: a file containing project code and a file containing a brief write up explaining your solution. We have included template files to be used both for the [code](https://github.com/udacity/CarND-LaneLines-P1/blob/master/P1.ipynb) and the [writeup](https://github.com/udacity/CarND-LaneLines-P1/blob/master/writeup_template.md).The code file is called P1.ipynb and the writeup template is writeup_template.md 
+### Step 2: Apply Gaussian smoothing
 
-To meet specifications in the project, take a look at the requirements in the [project rubric](https://review.udacity.com/#!/rubrics/322/view)
+- Using `cv2.GaussianBlur()` function. 
+- I chose a `kernel_size=3`. I didn't tune `kernel_size`.
+
+### Step 3: Apply Canny edge detection to find edges
+
+- Using `cv.Canny(img, low_threshold, high_threshold)`. 
+- I use `low_threshold=50` and `high_threshold=150`. I didn't spend too much time tuning these 2 parameters.
+
+### Step 4: Filter region of interest
+
+- Using `cv2.fillPoly()` to remain pixels within a polygon. 
+- I use a polygon with 4 vertices and set them to `(40,imshape[0]), (imshape[1]/2-40,imshape[0]/2+60), (imshape[1]/2+60,imshape[0]/2+60), (imshape[1], imshape[0])`. If most edges outside ego lane can be removed, it will be convenient later.
+
+### Step 5: Apply Hough transform to find line segments by connecting edges
+
+- Using `cv2.HoughLinesP(masked_edges, rho, theta, threshold, np.array([]), min_line_length, max_line_gap)`. 
+- I set `min_line_length=30, max_line_gap=15`.
+
+### Step 6: Merge line segments whose slopes and interacts are close
+
+- Implemented as `merge_lane_lines()` function.
+
+#### Step 6.1 Remove line segments with too small or too large slopes
+
+- I select the slope threshold as `0.45 ~ 0.85 `. This is tuned mainly with `challenge.mp4`.
+
+#### Step 6.2 Cluster line segments using slopes and interacts
+
+- Line segments whose slope difference is smaller than `0.1` and intercept difference is smaller than `50` are put in same cluster.
+
+#### Step 6.3 Create one new line segment for each cluster
+
+- The new slope and interact are the mean of slopes and interacts within each cluster.
+- Here I record the sum of y-axis distances of line segments in each cluster. This is used as a confidence of the new created line segment. 
+
+### Step 7: Select left and right lane line segments
+
+- Implemented as `select_two_sides()` function.
+- Separate all line segments into two parts by looking if the slope is greater than 0.
+- For each part (side of ego lane), line segment with highest confidence will be chosen as the final lane line.
+
+### Step 8: Extrapolate left and right lane line segments
+
+- Extend left and right line segments to a `[y_min, y_max]` range (which I set to  `imshape[0]/2+60, imshape[0]`).
+
+### Step 9: Put extrapolated lane lines on original image
+
+- Using the provided `weighted_img()` function.
 
 
-Creating a Great Writeup
----
-For this project, a great writeup should provide a detailed response to the "Reflection" section of the [project rubric](https://review.udacity.com/#!/rubrics/322/view). There are three parts to the reflection:
+## 2. Potential shortcomings with this pipeline
 
-1. Describe the pipeline
+- First potential shortcoming is that this pipeline can not deal with curve road very well because right now, Hough transform only detects straight line segments.
 
-2. Identify any shortcomings
+- Second shortcoming is that, when another edges (such as shadows caused by sunlight and trees) appears on ego lane, the lane line segments could be buried in those edges and probably not detected by Hough transform.
+- Third shortcoming is the slope range used in Step 6.1. I do think that `0.45 ~ 0.85` is strict. Maybe the upper bound is not necessary. For example, when ego vehicle is not running on the center of lane, the lane line may become vertical in image.
+- Fourth shortcoming is the fixed region of interest. When there comes a **slope**, or when there comes a sharp curve, or when ego car is not running on center of the lane, the fixed ROI would not include enough information or would include information that would bother this pipeline.
 
-3. Suggest possible improvements
+## 3. Possible improvements to this pipeline
 
-We encourage using images in your writeup to demonstrate how your pipeline works.  
+- First possible improvement would be to also use semantic segmentation result so that we can get lane mark pixels more robustly.
 
-All that said, please be concise!  We're not looking for you to write a book here: just a brief description.
-
-You're not required to use markdown for your writeup.  If you use another method please just submit a pdf of your writeup. Here is a link to a [writeup template file](https://github.com/udacity/CarND-LaneLines-P1/blob/master/writeup_template.md). 
-
-
-The Project
----
-
-## If you have already installed the [CarND Term1 Starter Kit](https://github.com/udacity/CarND-Term1-Starter-Kit/blob/master/README.md) you should be good to go!   If not, you should install the starter kit to get started on this project. ##
-
-**Step 1:** Set up the [CarND Term1 Starter Kit](https://github.com/udacity/CarND-Term1-Starter-Kit/blob/master/README.md) if you haven't already.
-
-**Step 2:** Open the code in a Jupyter Notebook
-
-You will complete the project code in a Jupyter notebook.  If you are unfamiliar with Jupyter Notebooks, check out [Udacity's free course on Anaconda and Jupyter Notebooks](https://classroom.udacity.com/courses/ud1111) to get started.
-
-Jupyter is an Ipython notebook where you can run blocks of code and see results interactively.  All the code for this project is contained in a Jupyter notebook. To start Jupyter in your browser, use terminal to navigate to your project directory and then run the following command at the terminal prompt (be sure you've activated your Python 3 carnd-term1 environment as described in the [CarND Term1 Starter Kit](https://github.com/udacity/CarND-Term1-Starter-Kit/blob/master/README.md) installation instructions!):
-
-`> jupyter notebook`
-
-A browser window will appear showing the contents of the current directory.  Click on the file called "P1.ipynb".  Another browser window will appear displaying the notebook.  Follow the instructions in the notebook to complete the project.  
-
-**Step 3:** Complete the project and submit both the Ipython notebook and the project writeup
-
-## How to write a README
-A well written README file can enhance your project and portfolio.  Develop your abilities to create professional README files by completing [this free course](https://www.udacity.com/course/writing-readmes--ud777).
+- Second potential improvement could be to search for methods of detecting curves such as sliding window method to cluster left and right white pixels and fit curves on each side.
 
